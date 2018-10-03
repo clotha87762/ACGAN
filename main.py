@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 import torch
-from torchvision.utils import *
-from torchvision.transforms import *
-from torchvision.datasets import *
+import torchvision.utils as vutils
+import torchvision.transforms as transforms
+import torchvision.datasets as datasets
 
 import os
 import argparse
@@ -13,7 +13,9 @@ import random
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-
+import torch.utils.data.dataloader 
+import file
+import model
 
 from tensorboardX import SummaryWriter
 
@@ -50,16 +52,42 @@ parser.add_argument('--sample_dir' , dest = 'sample_dir' , default = './Sample')
 parser.add_argument('--test_dir' , dest = 'test_dir' , default = './Test')
 parser.add_argument('--dataset', dest = 'dataset' , default = 'cifar10')
 
-parser.add_argument('--seed', dest = 'seed' , default = None)
+parser.add_argument('--sample_freq', dest = 'sample_freq' ,type = int , default = 500)
+parser.add_argument('--save_freq', dest = 'save_freq' ,type = int , default = 500)
 
+
+
+parser.add_argument('--seed', dest = 'seed' , default = None)
+parser.add_argument('--worker', dest = 'worker' , type = int ,default = 4)
+parser.add_argument('--wgan' , dest = 'wgan' , type = bool , defualt = False , help =\
+                    'Use WGAN training loss and strategy or not')
+parser.add_argument('--aux_weight' , dest = 'aux_weight', type = float , default = 1.0 , help = 'loss weight of auxiliary buffer')
+parser.add_argument('--l_smooth' , dest = 'l_smooth' , type = bool , default = True , help = 'Label smoothing of GAN or not')
+
+parser.add_argument('--run_name' , dest = 'run_name' , default = 'test' )
 
 args = parser.parse_args()
 
 
+def weights_init(model):
+    name = model.__class__.__name__
+    if name.find('Conv') != -1 :
+        model.weight.data.normal_(0.0 ,0.02)
+    elif name.find('BatchNorm') != -1:
+        model.weight.data.normal_(1.0, 0.02)
+        nn.init.constant_(model.bias.data, 0)
+        
+
+def sample_generator( generator , noise , label):
+    pass
+    
+
 def main(_):
     
+    
+    
     if not os.path.exists(data_dir):
-        os.makedirs(args.data_dir)
+        os.makedirs(args.data_dir) 
     if not os.path.exists(ckpt_dir):
         os.makedirs(args.ckpt_dir)
     if not os.path.exists(log_dir):
@@ -75,6 +103,7 @@ def main(_):
     if args.seed is not None :
         torch.manual_seed(args.seed)
         random.seed(args.seed)
+        np.random.seed(args.seed)
         print('Using seed' + str(seed))
     
     if not torch.cuda.is_available():
@@ -87,9 +116,153 @@ def main(_):
     else :
         multi_gpu = False
     
+    writer = SummaryWriter()
+    
+    if args.dataset == 'cifar10':
+        dataset = datasets.CIFAR10(args.data_dir,download = True , 
+                                   transform = transforms.Compose(
+                                    transforms.Resize(args.imsize),
+                                    transforms.ToTensor(),
+                                    transforms.Normalize([0.5,0.5,0.5] , [0.5,0.5,0.5])
+                                    )
+                                   )
+    else :
+        
+    
+    dataloader = torch.utils.data.DataLoader( dataset , batch_size = args.batch , \
+                                             shuffle = True , num_workers = args.worker)
+    
+    device = torch.device()
+    
+    generator = model.Generator(args)
+    discriminator = model.Discriminator(args)
+    
+ 
+        
+    generator.apply(weights_init)
+    discriminator.apply(weights_init)
+    
+    
+    gan_criterion = nn.BCELoss()
+    aux_criterion = nn.CrossEntropyLoss()
+    
+    
+    #input_noise = torch.from_numpy( np.random.normal(0,1,[args.batch , args.dim_embed]) )
+    #input_label = torch.from_numpy( np.random.randint(0,args.num_class, [args.batch,1 ]) )
     
     
     
+    opt_d = optim.Adam(discriminator.parameters() , lr = args.lr , betas=(args.beta1 , 0.999) )
+    opt_g = optim.Adam(generator.parameters() , lr = args.lr , betas=(args.beta1, 0.999) )
+    
+    if args.l_smooth:
+        # training strategy stated in improved GAN
+        real_label = 0.9
+        fake_label = 0.1
+    else :
+        real_label = 1.0
+        fake_label = 0.0
+        
+    step = 0
+    
+    if os.path.isfile(os.path.join(args.ckpt_dir,args.run_name+'.ckpt')):
+        ckpt = torch.load(os.path.join(args.ckpt_dir,args.run_name+'.ckpt'))
+        generator.load_state_dict(ckpt['generator'])
+        discriminator.load_state_dict(ckpt['discriminator'])
+        opt_d.load_state_dict(ckpt['opt_d'])
+        opt_g.load_state_dict(ckpt['opt_g'])
+    
+    if args.gpu:
+
+        # acutally do nothing?  because bce and cce don't have paramters
+        gan_criterion = gan_criterion.cuda()
+        aux_criterion = aux_criterion.cuda()
+        generator = generator.cuda()
+        discriminator = discriminator.cuda()
+    
+    
+    for i in range(args.epoch):
+        
+        for i , data in enumerate(dataloader):
+            
+            images , labels = data[0] , data[1]
+            
+            
+            input_noise = torch.from_numpy( np.random.normal(0,1,[args.batch , args.dim_embed]) )
+            input_label = torch.from_numpy( np.random.randint(0,args.num_class, [args.batch,1 ]) )
+            
+            real_target = torch.full((args.batch,1) , real_label)
+            fake_target = torch.full((args.batch,1) , fake_label)
+            aux_target =  torch.tensor(labels)
+             
+            if args.gpu:
+                input_noise = input_noise.cuda()
+                input_label = input_label.cuda()
+                image = images.cuda()
+                label = labels.cuda()
+                real_target = real_target.cuda()
+                fake_target = fake_target.cuda()
+                aux_target = aux_target.cuda()
+            
+            # train discriminator with real samples
+            opt_d.zero_grad()
+            
+            gan_out , aux_out_r = discriminator(images)
+            gan_loss = gan_criterion(gan_out , real_label )
+            aux_loss = aux_criterion(aux_out_r , aux_target)
+            d_real_loss = gan_loss + aux_loss
+            
+            
+            # train discriminator with fake samples
+            fake = generator(input_noise , input_label).detach()
+            gan_out , aux_out_f = discriminator(fake)
+            gan_loss = gan_criterion(gan_out , fake_label)
+            aux_loss = aux_criterion(aux_out_f, input_label)
+            d_fake_loss = gan_loss + aux_loss
+            
+            d_loss = d_real_loss + d_fake_loss
+            d_loss.backward()
+            
+            opt_d.step()
+            
+            
+            # train generator
+            opt_d.zero_grad() # 好像不call也沒關係
+            opt_g.zero_grad()
+            
+            fake = generator(input_noise , input_label)
+            gan_out , aux_out_f = discriminator(fake)
+            gan_loss = gan_criterion(gan_out , real_label )
+            aux_loss = aux_criterion(aux_out_f, input_label)
+            
+            g_loss = gan_loss + aux_loss
+            g_loss.backward()
+            
+            opt_g.step()
+            
+            step = step + 1
+            
+            if step % args.save_freq == 0 :
+                torch.save({
+                        'step' : step,
+                        'generator' : generator.state_dict(),
+                        'discriminator' : discriminator.state_dict(),
+                        'opt_d' : opt_d.state_dict(),
+                        'opt_g' : opt_g.state_dict()
+                        }, os.path.join(arg.ckpt_dir,args.run_name+'.ckpt'))
+            
+            if step % args.sample_freq == 0 :
+                sample_generator(generator , input_noise , input_label)
+            
+            pred = np.concatenate([aux_out_r.data.cpu().numpy(), aux_out_f.data.cpu().numpy()], axis=0)
+            gt = np.concatenate([labels.data.cpu().numpy(), input_label.data.cpu().numpy()], axis=0)
+            d_acc = np.mean(np.argmax(pred, axis=1) == gt)
+
+            
+            print ("[Epoch %d/%d] [Batch %d/%d] [D loss: %f, acc: %d%%] [G loss: %f]" % \
+                   (epoch, opt.n_epochs, i, len(dataloader),
+                    d_loss.item(), 100 * d_acc,
+                    g_loss.item()))
         
 
     

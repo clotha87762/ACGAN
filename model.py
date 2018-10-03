@@ -115,9 +115,9 @@ class Discriminator( nn.modules ):
         
         self.dsize = args.imsize // (8)
         
-        self.fc1 = nn.Linear( args.out_dim* 8 * (self.dsize**2) , 1)
-        
-        
+        self.fc_gan = nn.Linear( args.out_dim* 8 * (self.dsize**2) , 1)
+        self.fc_aux1 = nn.Linear( args.out_dim* 8 * (self.dsize**2) , 128)
+        self.fc_aux2 = nn.Linear( 128 , args.num_class)
     
     def forward(self , _input ):
         x = self.conv1(_input)
@@ -125,5 +125,6 @@ class Discriminator( nn.modules ):
         x = self.conv3(x)
         x = self.conv4(x)
         x = x.view( args.batch , args.out_dim* 8 * (self.dsize**2) )
-        x = self.fc1(x)
-        return x
+        gan_out = self.fc_gan(x)
+        aux_out = self.fc_aux(x)
+        return gan_out , aux_out

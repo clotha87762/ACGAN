@@ -87,25 +87,27 @@ def weights_init(model):
 def sample_generator( generator , noise , label , step):
     
     fake = generator(noise , label).detach().cpu()
-    vutils.save_image( fake , args.sample_dir + '/%d.png' % , nrow=8, normalize=True)
+    vutils.save_image( fake , sample_path + '/%d.png' % , nrow=8, normalize=True)
 
     
     
 
 def main(_):
     
-    
+    log_path = os.path.join(args.log_dir,args.run_name)
+    ckpt_path = os.path.join(args.ckpt_dir,args.run_name)
+    sample_path = os.path.join(args.sample_dir,args.run_name)
     
     if not os.path.exists(data_dir):
         os.makedirs(args.data_dir) 
-    if not os.path.exists(ckpt_dir):
-        os.makedirs(args.ckpt_dir)
-    if not os.path.exists(log_dir):
-        os.makedirs(args.log_dir)
-    if not os.path.exists(test_dir):
+    if not os.path.exists(ckpt_path):
+        os.makedirs(ckpt_path)
+    if not os.path.exists(log_path):
+        os.makedirs(log_path)
+    if not os.path.exists(args.test_dir):
         os.makedirs(args.test_dir)
-    if not os.path.exists(args.sample_dir):
-        os.makedirs(args.sample_dir)
+    if not os.path.exists(sample_path):
+        os.makedirs(sample_path)
     
     if args.use_gpu :
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_idx
@@ -126,7 +128,7 @@ def main(_):
     else :
         multi_gpu = False
     
-    writer = SummaryWriter()
+    writer = SummaryWriter(log_dir = log_path)
     
     if args.dataset == 'cifar10':
         dataset = datasets.CIFAR10(args.data_dir,download = True , 
@@ -179,8 +181,8 @@ def main(_):
         
     step = 0
     
-    if os.path.isfile(os.path.join(args.ckpt_dir,args.run_name+'.ckpt')):
-        ckpt = torch.load(os.path.join(args.ckpt_dir,args.run_name+'.ckpt'))
+    if os.path.isfile(os.path.join(ckpt_path,args.run_name+'.ckpt')):
+        ckpt = torch.load(os.path.join(ckpt_path,args.run_name+'.ckpt'))
         generator.load_state_dict(ckpt['generator'])
         discriminator.load_state_dict(ckpt['discriminator'])
         opt_d.load_state_dict(ckpt['opt_d'])
@@ -273,9 +275,14 @@ def main(_):
             
             step = step + 1
             
+            writer.add_scalar('losses/g_loss' , g_loss , step)
+            writer.add_scalar('losses/d_loss' , d_loss , step)
+            grid = vutils.make_grid(fake.detach() ,  normalize=True )
+            writer.add_image('generated', grid , step)
+            
             if args.wagn and not args.gp :
                 for p in discriminator.parameters():
-                    p.data.clamp_()
+                    p.data.clamp_(-args.clip , args.clip)
             
             if step % args.save_freq == 0 :
                 torch.save({
@@ -284,7 +291,7 @@ def main(_):
                         'discriminator' : discriminator.state_dict(),
                         'opt_d' : opt_d.state_dict(),
                         'opt_g' : opt_g.state_dict()
-                        }, os.path.join(arg.ckpt_dir,args.run_name+'.ckpt'))
+                        }, os.path.join(ckpt_path,args.run_name+'.ckpt'))
             
             if step % args.sample_freq == 0 :
                 sample_generator(generator , input_noise , input_label , step)

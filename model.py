@@ -25,13 +25,15 @@ def gradient_penalty( discriminator , real_sample , fake_sample ):
     penalty = torch.mean(penalty)
     return penalty
 
-class Generator( nn.modules ):
+class Generator( nn.Module ):
+    
     def __init__(self , args ):
-        
+        super(Generator, self).__init__()
         self.initsize = args.imsize // 8
+        self.gfdim = args.gfdim
         
         self.embedding = nn.Embedding( args.num_class , args.dim_embed )
-        self.fc1 = nn.Linear( args.dim_embed , self.initsize**2 * args.gfdim * 8 )
+        self.fc1 = nn.Linear( args.dim_embed , (self.initsize**2) * args.gfdim * 8 )
         
         if args.deconv:
             
@@ -63,19 +65,19 @@ class Generator( nn.modules ):
             pad = ((args.g_kernel-1))/2
             self.conv1 = nn.Sequential(
                     nn.Conv2d(args.gfdim * 8 , args.gfdim*4 , 3 , stride = 1 , padding = 1 ),
-                    nn.Upsample(scle_factor = 2 ),
+                    nn.Upsample(scale_factor = 2 ),
                     nn.BatchNorm2d(args.gfdim * 4),
                     nn.LeakyReLU(inplace = True )
                     )
             self.conv2 = nn.Sequential(
                     nn.Conv2d(args.gfdim * 4 , args.gfdim*2 , 3  , stride = 1 , padding = 1 ),
-                    nn.Upsample(scle_factor = 2 ),
+                    nn.Upsample(scale_factor = 2 ),
                     nn.BatchNorm2d(args.gfdim * 2),
                     nn.LeakyReLU(inplace = True )
                     )
             self.conv3 = nn.Sequential(
                     nn.Conv2d(args.gfdim * 2 , args.gfdim , 3 , stride = 1 , padding = 1 ),
-                    nn.Upsample(scle_factor = 2 ),
+                    nn.Upsample(scale_factor = 2 ),
                     nn.BatchNorm2d(args.gfdim ) ,
                     nn.LeakyReLU(inplace = True )
                     )
@@ -87,10 +89,15 @@ class Generator( nn.modules ):
             
         
     def forward(self , noise ,  class_index ):
+        print(noise.shape)
+        print(class_index.shape)
         latent = self.embedding(class_index)
+        print(latent.shape)
         x = torch.mul( latent , noise)
+        print(x.shape)
         x = self.fc1(x)
-        x = x.view( args.batch , self.initsize , 1 , 1)
+        print(x.shape)
+        x = x.view( x.shape[0] , self.gfdim * 8  , self.initsize , self.initsize)
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.conv3(x) 
@@ -99,50 +106,74 @@ class Generator( nn.modules ):
         return x
     
 
-class Discriminator( nn.modules ):
+class Discriminator( nn.Module ):
     
-    def __init(self, args ):
-        self.conv1 = nn.Sequential(
-                nn.Conv2d(args.out_dim, args.dfdim , 3 , 2 ,1 ),
-                nn.utils.spectral_norm() if args.sn else nn.BatchNorm2d(args.dfdim ),
-                nn.LeakyReLU(inplace= True)
-                )
-        self.conv2 = nn.Sequential(
-                nn.Conv2d(args.out_dim, args.dfdim*2 , 3 , 2 , 1 ),
-                nn.utils.spectral_norm() if args.sn else nn.BatchNorm2d(args.dfdim * 2 ),
-                nn.LeakyReLU(inplace= True)
-                )
-        self.conv3 = nn.Sequential(
-                nn.Conv2d(args.out_dim*2 , args.dfdim*4 , 3 , 2 , 1 ),
-                nn.utils.spectral_norm() if args.sn else nn.BatchNorm2d(args.dfdim * 4  ),
-                nn.LeakyReLU(inplace= True)
-                )
+    def __init__(self, args ):
+        
+        super(Discriminator, self).__init__()
+        
+
         if args.sn:
+            self.conv1 = nn.Sequential(
+                nn.utils.spectral_norm( nn.Conv2d(args.out_dim , args.dfdim , 3 , 2 , 1 )),
+                nn.LeakyReLU(inplace= True)
+                )
+            self.conv2 = nn.Sequential(
+                nn.utils.spectral_norm( nn.Conv2d(args.dfdim , args.dfdim*2 , 3 , 2 , 1 )),
+                nn.LeakyReLU(inplace= True)
+                )
+            self.conv3 = nn.Sequential(
+                nn.utils.spectral_norm( nn.Conv2d(args.dfdim*2 , args.dfdim*4 , 3 , 2 , 1 )),
+                nn.LeakyReLU(inplace= True)
+                )
             self.conv4 = nn.Sequential(
                     nn.ZeroPad2d((1,0,1,0)),
-                    nn.Conv2d(args.gfdim * 4 , args.out_dim * 8  , 4 , stride = 1  , padding = 1),
-                    nn.utils.spectral_norm() ,
+                    nn.utils.spectral_norm(nn.Conv2d(args.dfdim * 4 , args.dfdim * 8  , 4 , stride = 1  , padding = 1)),
                     nn.Tanh()
                     )
         else:
+            self.conv1 = nn.Sequential(
+                nn.Conv2d(args.out_dim, args.dfdim , 3 , 2 ,1 ),
+                nn.BatchNorm2d(args.dfdim ),
+                nn.LeakyReLU(inplace= True)
+                )
+            self.conv1 = nn.Sequential(
+                nn.Conv2d(args.dfdim, args.dfdim*2 , 3 , 2 ,1 ),
+                nn.BatchNorm2d(args.dfdim *2),
+                nn.LeakyReLU(inplace= True)
+                )
+            self.conv1 = nn.Sequential(
+                nn.Conv2d(args.dfdim*2, args.dfdim*4 , 3 , 2 ,1 ),
+                nn.BatchNorm2d(args.dfdim *4 ),
+                nn.LeakyReLU(inplace= True)
+                )
             self.conv4 = nn.Sequential(
                     nn.ZeroPad2d((1,0,1,0)),
-                    nn.Conv2d(args.gfdim * 4 , args.out_dim * 8  , 4 , stride = 1  , padding = 1),
+                    nn.Conv2d(args.gdfdim * 4 , args.dfdim * 8  , 4 , stride = 1  , padding = 1),
                     nn.Tanh()
                     )
         
         self.dsize = args.imsize // (8)
+        self.dfdim = args.dfdim
         
-        self.fc_gan = nn.Linear( args.out_dim* 8 * (self.dsize**2) , 1)
-        self.fc_aux1 = nn.Linear( args.out_dim* 8 * (self.dsize**2) , 128)
+        self.fc_gan = nn.Linear( args.dfdim* 8 * (self.dsize**2) , 1)
+        self.fc_aux1 = nn.Linear( args.dfdim* 8 * (self.dsize**2) , 128)
         self.fc_aux2 = nn.Linear( 128 , args.num_class)
+        self.out_dim = args.out_dim
+        
+        self.soft_max = nn.Softmax()
+        self.sigmoid = nn.Sigmoid()
     
     def forward(self , _input ):
         x = self.conv1(_input)
         x = self.conv2(x)
         x = self.conv3(x)
         x = self.conv4(x)
-        x = x.view( args.batch , args.out_dim* 8 * (self.dsize**2) )
-        gan_out = self.fc_gan(x)
-        aux_out = self.fc_aux(x)
+        x = x.view( _input.shape[0] , self.dfdim * 8 * (self.dsize**2) )
+        
+        gan_out= self.sigmoid(self.fc_gan(x))
+        
+        
+        aux_temp = self.fc_aux1(x)
+        aux_out = self.soft_max(self.fc_aux2(aux_temp))
         return gan_out , aux_out

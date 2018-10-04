@@ -22,16 +22,19 @@ from tensorboardX import SummaryWriter
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--batch' , dest = 'batch' , type = int , default = 32)
+parser.add_argument('--batch' , dest = 'batch' , type = int , default = 64)
+parser.add_argument('--phase' , dest = 'phase' , default = 'train')
 
 parser.add_argument('--epoch' , dest = 'epoch' , type = int , default = 200)
 parser.add_argument('--imsize', dest = 'imsize' , type = int , default = 32 , help = 'image size')
 parser.add_argument('--gfdim' , dest = 'gfdim' , type = int , default = 16 )
-parser.add_argument('--deconv' , dest = 'deconv' type = bool , default = True )
+parser.add_argument('--deconv' , dest = 'deconv', type = bool , default = False )
 parser.add_argument('--dfdim' , dest = 'dfdim' , type = int , default = 16 )
+
 parser.add_argument('--in_dim', dest = 'in_dim' , type = int , default = 3  ,help = 'input image channel')
 parser.add_argument('--out_dim' , dest = 'out_dim' , type = int , default = 3 )
 parser.add_argument('--lr' , dest = 'lr' , type = float , default = 0.0002)
+
 parser.add_argument('--num_class' , dest = 'num_class' , type = int , default = 10 )
 parser.add_argument('--beta1' , dest = 'beta1' , type = float , default = 0.5 , help = 'beta1 of Adam optimizer')
 parser.add_argument('--dim_embed' , dest = 'dim_embed' , type = int , default = 100 , help = 'the dim of the embedded vector' )
@@ -41,7 +44,7 @@ parser.add_argument('--sn' , dest = 'sn' , type = bool , default = True , help =
 parser.add_argument('--g_kernel' , dest = 'g_kernel' , type = int , default = 3 , help = 'kernel size of generator conv2d')
 parser.add_argument('--d_kernel' , dest = 'd_kernel' , type = int , default = 3 , help = 'kernel size of discriminator conv2d')
 
-parser.add_argument('--use_gpu', dest = 'gpu' , type = bool , default = True)
+parser.add_argument('--gpu', dest = 'gpu' , type = bool , default = True)
 parser.add_argument('--gpu_idx', dest = 'gpu_idx' , default = '0' )
 
 
@@ -59,8 +62,7 @@ parser.add_argument('--save_freq', dest = 'save_freq' ,type = int , default = 50
 
 parser.add_argument('--seed', dest = 'seed' , default = None)
 parser.add_argument('--worker', dest = 'worker' , type = int ,default = 4)
-parser.add_argument('--wgan' , dest = 'wgan' , type = bool , defualt = False , help =\
-                    'Use WGAN training loss and strategy or not')
+parser.add_argument('--wgan' , dest = 'wgan' , type = bool , default = False , help = 'Use WGAN training loss and strategy or not')
 parser.add_argument('--clip', dest = 'clip' , type = float , default = 0.01 , help='clip  value of wgan')
 
 
@@ -87,44 +89,17 @@ def weights_init(model):
 def sample_generator( generator , noise , label , step):
     
     fake = generator(noise , label).detach().cpu()
-    vutils.save_image( fake , sample_path + '/%d.png' % , nrow=8, normalize=True)
+    vutils.save_image( fake , sample_path + '/%d.png' % step , nrow=8, normalize=True)
 
     
     
 
-def main(_):
+def train():
     
-    log_path = os.path.join(args.log_dir,args.run_name)
-    ckpt_path = os.path.join(args.ckpt_dir,args.run_name)
-    sample_path = os.path.join(args.sample_dir,args.run_name)
-    
-    if not os.path.exists(data_dir):
-        os.makedirs(args.data_dir) 
-    if not os.path.exists(ckpt_path):
-        os.makedirs(ckpt_path)
-    if not os.path.exists(log_path):
-        os.makedirs(log_path)
-    if not os.path.exists(args.test_dir):
-        os.makedirs(args.test_dir)
-    if not os.path.exists(sample_path):
-        os.makedirs(sample_path)
-    
-    if args.use_gpu :
-        os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_idx
-    
-    if args.seed is not None :
-        torch.manual_seed(args.seed)
-        random.seed(args.seed)
-        np.random.seed(args.seed)
-        print('Using seed' + str(seed))
-    
-    if not torch.cuda.is_available():
-        if args.gpu:
-            print('Cuda is not available, please disable gpu')
-            exit()
     
     if len(args.gpu_idx) > 1 :
         multi_gpu = True
+        gpu_list = [ int(i) for i in args.gpu_idx.split(',')]
     else :
         multi_gpu = False
     
@@ -132,25 +107,26 @@ def main(_):
     
     if args.dataset == 'cifar10':
         dataset = datasets.CIFAR10(args.data_dir,download = True , 
-                                    transform = transforms.Compose(
+                                    transform = transforms.Compose([
                                     transforms.Resize(args.imsize),
                                     transforms.ToTensor(),
                                     transforms.Normalize([0.5,0.5,0.5] , [0.5,0.5,0.5])
+                                    ]
                                     )
                                    )
     else :
         dataset = datasets.ImageFolder(args.data_dir , 
-                                    transform = transforms.Compose(
+                                    transform = transforms.Compose([
                                     transforms.Resize(args.imsize),
                                     transforms.ToTensor(),
-                                    transforms.Normalize([0.5,0.5,0.5] , [0.5,0.5,0.5])
+                                    transforms.Normalize((0.5,0.5,0.5) , (0.5,0.5,0.5))]
                                     )
                                    )
     
     dataloader = torch.utils.data.DataLoader( dataset , batch_size = args.batch , \
                                              shuffle = True , num_workers = args.worker)
     
-    device = torch.device()
+    #device = torch.device()
     
     generator = model.Generator(args)
     discriminator = model.Discriminator(args)
@@ -193,8 +169,13 @@ def main(_):
         # acutally do nothing?  because bce and cce don't have paramters
         gan_criterion = gan_criterion.cuda()
         aux_criterion = aux_criterion.cuda()
+        
         generator = generator.cuda()
         discriminator = discriminator.cuda()
+        
+        if multi_gpu:
+            generator = nn.DataParallel(generator , device_ids = gpu_list)
+            discriminator = nn.DataParallel(discriminator , device_ids = gpu_list)
     
     
     for i in range(args.epoch):
@@ -204,18 +185,18 @@ def main(_):
             images , labels = data[0] , data[1]
             
             
-            input_noise = torch.from_numpy( np.random.normal(0,1,[args.batch , args.dim_embed]) )
-            input_label = torch.from_numpy( np.random.randint(0,args.num_class, [args.batch,1 ]) )
+            input_noise = torch.from_numpy( np.random.normal(0,1,[args.batch , args.dim_embed]).astype(np.float32) )
+            input_label = torch.from_numpy( np.random.randint(0,args.num_class, [args.batch ]) )
             
             real_target = torch.full((args.batch,1) , real_label)
             fake_target = torch.full((args.batch,1) , fake_label)
-            aux_target =  torch.tensor(labels)
+            aux_target =  torch.autograd.Variable(labels)
              
             if args.gpu:
                 input_noise = input_noise.cuda()
                 input_label = input_label.cuda()
-                image = images.cuda()
-                label = labels.cuda()
+                images = images.cuda()
+                labels = labels.cuda()
                 real_target = real_target.cuda()
                 fake_target = fake_target.cuda()
                 aux_target = aux_target.cuda()
@@ -228,9 +209,10 @@ def main(_):
             if args.wgan:
                 gan_loss = -torch.mean(gan_out)
             else:
-                gan_loss = gan_criterion(gan_out , real_label )
+                gan_loss = gan_criterion(gan_out , real_target )
+                
             aux_loss = aux_criterion(aux_out_r , aux_target)
-            d_real_loss = gan_loss + aux_loss
+            d_real_loss = gan_loss + args.aux_weight *  aux_loss
             
             
             # train discriminator with fake samples
@@ -239,12 +221,12 @@ def main(_):
             if args.wgan:
                 gan_loss = torch.mean(gan_out)
             else:
-                gan_loss = gan_criterion(gan_out , fake_label)
+                gan_loss = gan_criterion(gan_out , fake_target)
                 
             aux_loss = aux_criterion(aux_out_f, input_label)
-            d_fake_loss = gan_loss + aux_loss
+            d_fake_loss = gan_loss +  args.aux_weight * aux_loss
             
-            if args.wgan and args.gp
+            if args.wgan and args.gp:
                 gp = model.gradient_penalty(discriminator, images, fake)
                 d_loss = d_real_loss + d_fake_loss + args.gp_weight*gp
             else:
@@ -264,11 +246,11 @@ def main(_):
             if args.wgan:
                 gan_loss = -torch.mean(gan_out)
             else:
-                gan_loss = gan_criterion(gan_out , real_label )
+                gan_loss = gan_criterion(gan_out , real_target )
                 
             aux_loss = aux_criterion(aux_out_f, input_label)
             
-            g_loss = gan_loss + aux_loss
+            g_loss = gan_loss +  args.aux_weight * aux_loss
             g_loss.backward()
             
             opt_g.step()
@@ -280,7 +262,7 @@ def main(_):
             grid = vutils.make_grid(fake.detach() ,  normalize=True )
             writer.add_image('generated', grid , step)
             
-            if args.wagn and not args.gp :
+            if args.wgan and not args.gp :
                 for p in discriminator.parameters():
                     p.data.clamp_(-args.clip , args.clip)
             
@@ -302,14 +284,47 @@ def main(_):
 
             
             print ("[Epoch %d/%d] [Batch %d/%d] [D loss: %f, acc: %d%%] [G loss: %f]" % \
-                   (epoch, args.epoch , j, len(dataloader),
+                   (i, args.epoch , j, len(dataloader),
                     d_loss.item(), 100.0 * d_acc,
                     g_loss.item()))
         
 
     
 if __name__ == '__main__' :
-    main()
+    log_path = os.path.join(args.log_dir,args.run_name)
+    ckpt_path = os.path.join(args.ckpt_dir,args.run_name)
+    sample_path = os.path.join(args.sample_dir,args.run_name)
+    
+    if not os.path.exists(args.data_dir):
+        os.makedirs(args.data_dir) 
+    if not os.path.exists(ckpt_path):
+        os.makedirs(ckpt_path)
+    if not os.path.exists(log_path):
+        os.makedirs(log_path)
+    if not os.path.exists(args.test_dir):
+        os.makedirs(args.test_dir)
+    if not os.path.exists(sample_path):
+        os.makedirs(sample_path)
+    
+    if args.gpu :
+        os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_idx
+    
+    if args.seed is not None :
+        torch.manual_seed(args.seed)
+        random.seed(args.seed)
+        np.random.seed(args.seed)
+        print('Using seed' + str(args.seed))
+    
+    if not torch.cuda.is_available():
+        if args.gpu:
+            print('Cuda is not available, please disable gpu')
+            exit()
+    
+
+        
+        
+    if args.phase == 'train':
+        train()
 
 
 

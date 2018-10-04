@@ -3,9 +3,27 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.parallel
+import torch.autograd as autograd
 import math
 
 import numpy as np 
+
+
+def gradient_penalty( discriminator , real_sample , fake_sample ):
+    
+    batch = real_sample.shape[0]
+
+    alpha = torch.from_numpy( np.random.random(batch,1) )
+    interpolate = (alpha * real_sample)  +  ((1.0-alpha) * fake_sample)
+    output = discriminator(interpolate)
+    
+    grad_output = torch.empty([batch,1]).fill_(1.0)
+    grads = autograd.grad( output, interpolate, grad_output)
+    
+    grads = grads.view(batch,-1)
+    penalty = (grads.norm(p=2 , dim = 1) - 1.0) ** 2
+    penalty = torch.mean(penalty)
+    return penalty
 
 class Generator( nn.modules ):
     def __init__(self , args ):

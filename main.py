@@ -144,8 +144,7 @@ def train():
     
     
     
-    opt_d = optim.Adam(discriminator.parameters() , lr = args.lr , betas=(args.beta1 , 0.999) )
-    opt_g = optim.Adam(generator.parameters() , lr = args.lr , betas=(args.beta1, 0.999) )
+   
     
     if args.l_smooth:
         # training strategy stated in improved GAN
@@ -157,12 +156,7 @@ def train():
         
     step = 0
     
-    if os.path.isfile(os.path.join(ckpt_path,args.run_name+'.ckpt')):
-        ckpt = torch.load(os.path.join(ckpt_path,args.run_name+'.ckpt'))
-        generator.load_state_dict(ckpt['generator'])
-        discriminator.load_state_dict(ckpt['discriminator'])
-        opt_d.load_state_dict(ckpt['opt_d'])
-        opt_g.load_state_dict(ckpt['opt_g'])
+    
     
     if args.gpu:
 
@@ -177,6 +171,18 @@ def train():
             generator = nn.DataParallel(generator , device_ids = gpu_list)
             discriminator = nn.DataParallel(discriminator , device_ids = gpu_list)
     
+    opt_d = optim.Adam(discriminator.parameters() , lr = args.lr , betas=(args.beta1 , 0.999) )
+    opt_g = optim.Adam(generator.parameters() , lr = args.lr , betas=(args.beta1, 0.999) )
+    
+    if os.path.isfile(os.path.join(ckpt_path,args.run_name+'.ckpt')):
+        print('found ckpt file')
+        ckpt = torch.load(os.path.join(ckpt_path,args.run_name+'.ckpt'))
+        generator.load_state_dict(ckpt['generator'])
+        discriminator.load_state_dict(ckpt['discriminator'])
+        opt_d.load_state_dict(ckpt['opt_d'])
+        opt_g.load_state_dict(ckpt['opt_g'])
+        step = ckpt['step']
+    
     
     for i in range(args.epoch):
         
@@ -184,12 +190,14 @@ def train():
             
             images , labels = data[0] , data[1]
             
+            batch = images.shape[0]
             
-            input_noise = torch.from_numpy( np.random.normal(0,1,[args.batch , args.dim_embed]).astype(np.float32) )
-            input_label = torch.from_numpy( np.random.randint(0,args.num_class, [args.batch ]) )
             
-            real_target = torch.full((args.batch,1) , real_label)
-            fake_target = torch.full((args.batch,1) , fake_label)
+            input_noise = torch.from_numpy( np.random.normal(0,1,[batch , args.dim_embed]).astype(np.float32) )
+            input_label = torch.from_numpy( np.random.randint(0,args.num_class, [batch ]) )
+            
+            real_target = torch.full((batch,1) , real_label)
+            fake_target = torch.full((batch,1) , fake_label)
             aux_target =  torch.autograd.Variable(labels)
              
             if args.gpu:
@@ -230,7 +238,7 @@ def train():
                 gp = model.gradient_penalty(discriminator, images, fake)
                 d_loss = d_real_loss + d_fake_loss + args.gp_weight*gp
             else:
-                d_loss = d_real_loss + d_fake_loss
+                d_loss = (d_real_loss + d_fake_loss) / 2.0
                 
             d_loss.backward()
             
@@ -250,7 +258,7 @@ def train():
                 
             aux_loss = aux_criterion(aux_out_f, input_label)
             
-            g_loss = gan_loss +  args.aux_weight * aux_loss
+            g_loss =  (gan_loss +  args.aux_weight * aux_loss) * 0.5
             g_loss.backward()
             
             opt_g.step()

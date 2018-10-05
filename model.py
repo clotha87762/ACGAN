@@ -89,14 +89,14 @@ class Generator( nn.Module ):
             
         
     def forward(self , noise ,  class_index ):
-        print(noise.shape)
-        print(class_index.shape)
+        #print(noise.shape)
+        #print(class_index.shape)
         latent = self.embedding(class_index)
-        print(latent.shape)
+        #print(latent.shape)
         x = torch.mul( latent , noise)
-        print(x.shape)
+        #print(x.shape)
         x = self.fc1(x)
-        print(x.shape)
+        #print(x.shape)
         x = x.view( x.shape[0] , self.gfdim * 8  , self.initsize , self.initsize)
         x = self.conv1(x)
         x = self.conv2(x)
@@ -159,6 +159,7 @@ class Discriminator( nn.Module ):
         self.fc_gan = nn.Linear( args.dfdim* 8 * (self.dsize**2) , 1)
         self.fc_aux1 = nn.Linear( args.dfdim* 8 * (self.dsize**2) , 128)
         self.fc_aux2 = nn.Linear( 128 , args.num_class)
+        
         self.out_dim = args.out_dim
         
         self.soft_max = nn.Softmax()

@@ -264,11 +264,11 @@ def train():
             opt_g.step()
             
             step = step + 1
-            
-            writer.add_scalar('losses/g_loss' , g_loss , step)
-            writer.add_scalar('losses/d_loss' , d_loss , step)
-            grid = vutils.make_grid(fake.detach() ,  normalize=True )
-            writer.add_image('generated', grid , step)
+            if step % 100 == 0 : 
+            	writer.add_scalar('losses/g_loss' , g_loss , step)
+            	writer.add_scalar('losses/d_loss' , d_loss , step)
+            	grid = vutils.make_grid(fake.detach() ,  normalize=True )
+            	writer.add_image('generated', grid , step)
             
             if args.wgan and not args.gp :
                 for p in discriminator.parameters():

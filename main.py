@@ -168,6 +168,7 @@ def train():
         discriminator = discriminator.cuda()
         
         if multi_gpu:
+            print('multi gpu')
             generator = nn.DataParallel(generator , device_ids = gpu_list)
             discriminator = nn.DataParallel(discriminator , device_ids = gpu_list)
     
@@ -235,7 +236,7 @@ def train():
             d_fake_loss = gan_loss +  args.aux_weight * aux_loss
             
             if args.wgan and args.gp:
-                gp = model.gradient_penalty(discriminator, images, fake)
+                gp = model.gradient_penalty(discriminator, images.data, fake.data , args.num_class, args.gpu)
                 d_loss = d_real_loss + d_fake_loss + args.gp_weight*gp
             else:
                 d_loss = (d_real_loss + d_fake_loss) / 2.0

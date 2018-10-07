@@ -311,7 +311,8 @@ def train():
                    (i, args.epoch , j, len(dataloader),
                     d_loss.item(), 100.0 * d_acc,
                     g_loss.item()))
-        
+       
+
 
     
 if __name__ == '__main__' :
@@ -349,6 +350,7 @@ if __name__ == '__main__' :
         
     if args.phase == 'train':
         train()
+  
 
 
 

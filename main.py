@@ -23,25 +23,28 @@ from tensorboardX import SummaryWriter
 parser = argparse.ArgumentParser()
 
 parser.add_argument('--batch' , dest = 'batch' , type = int , default = 32)
+parser.add_argument('--phase' , dest = 'phase' , default = 'train')
 
 parser.add_argument('--epoch' , dest = 'epoch' , type = int , default = 200)
 parser.add_argument('--imsize', dest = 'imsize' , type = int , default = 32 , help = 'image size')
 parser.add_argument('--gfdim' , dest = 'gfdim' , type = int , default = 16 )
-parser.add_argument('--deconv' , dest = 'deconv' type = bool , default = True )
+parser.add_argument('--deconv' , dest = 'deconv', type = bool , default = True )
 parser.add_argument('--dfdim' , dest = 'dfdim' , type = int , default = 16 )
+
 parser.add_argument('--in_dim', dest = 'in_dim' , type = int , default = 3  ,help = 'input image channel')
 parser.add_argument('--out_dim' , dest = 'out_dim' , type = int , default = 3 )
 parser.add_argument('--lr' , dest = 'lr' , type = float , default = 0.0002)
+
 parser.add_argument('--num_class' , dest = 'num_class' , type = int , default = 10 )
 parser.add_argument('--beta1' , dest = 'beta1' , type = float , default = 0.5 , help = 'beta1 of Adam optimizer')
 parser.add_argument('--dim_embed' , dest = 'dim_embed' , type = int , default = 100 , help = 'the dim of the embedded vector' )
 
 parser.add_argument('--sn' , dest = 'sn' , type = bool , default = True , help = ' Use spectral normalization or not')
 
-parser.add_argument('--g_kernel' , dest = 'g_kernel' , type = int , default = 3 , help = 'kernel size of generator conv2d')
-parser.add_argument('--d_kernel' , dest = 'd_kernel' , type = int , default = 3 , help = 'kernel size of discriminator conv2d')
+parser.add_argument('--g_kernel' , dest = 'g_kernel' , type = int , default = 4 , help = 'kernel size of generator conv2d')
+parser.add_argument('--d_kernel' , dest = 'd_kernel' , type = int , default = 4 , help = 'kernel size of discriminator conv2d')
 
-parser.add_argument('--use_gpu', dest = 'gpu' , type = bool , default = True)
+parser.add_argument('--gpu', dest = 'gpu' , type = bool , default = True)
 parser.add_argument('--gpu_idx', dest = 'gpu_idx' , default = '0' )
 
 
@@ -59,8 +62,7 @@ parser.add_argument('--save_freq', dest = 'save_freq' ,type = int , default = 50
 
 parser.add_argument('--seed', dest = 'seed' , default = None)
 parser.add_argument('--worker', dest = 'worker' , type = int ,default = 4)
-parser.add_argument('--wgan' , dest = 'wgan' , type = bool , defualt = False , help =\
-                    'Use WGAN training loss and strategy or not')
+parser.add_argument('--wgan' , dest = 'wgan' , type = bool , default = False , help = 'Use WGAN training loss and strategy or not')
 parser.add_argument('--clip', dest = 'clip' , type = float , default = 0.01 , help='clip  value of wgan')
 
 
@@ -68,9 +70,11 @@ parser.add_argument('--gp' , dest = 'gp' , type = bool , default = False , help 
 parser.add_argument('--gp_weight' , dest = 'gp_weight' , type = float , default = 10.0)
 
 parser.add_argument('--aux_weight' , dest = 'aux_weight', type = float , default = 1.0 , help = 'loss weight of auxiliary buffer')
-parser.add_argument('--l_smooth' , dest = 'l_smooth' , type = bool , default = True , help = 'Label smoothing of GAN or not')
+parser.add_argument('--l_smooth' , dest = 'l_smooth' , type = bool , default = False , help = 'Label smoothing of GAN or not')
 
 parser.add_argument('--run_name' , dest = 'run_name' , default = 'test' )
+
+parser.add_argument('--sample_idx' , dest = 'sample_idx' ,type = int, default = None , help = 'sample index for evaluation in test phase')
 
 args = parser.parse_args()
 
@@ -87,44 +91,21 @@ def weights_init(model):
 def sample_generator( generator , noise , label , step):
     
     fake = generator(noise , label).detach().cpu()
-    vutils.save_image( fake , sample_path + '/%d.png' % , nrow=8, normalize=True)
+    vutils.save_image( fake , sample_path + '/%d.png' % step , nrow=8, normalize=True)
 
+def test_generator( generator , noise , label , nrow ):
     
+    # file name is sample index
+    fake = generator(noise , label).detach().cpu()
+    vutils.save_image( fake , test_path + '/%d.png' % args.sample_idx , nrow=nrow, normalize=True)
     
 
-def main(_):
+def train():
     
-    log_path = os.path.join(args.log_dir,args.run_name)
-    ckpt_path = os.path.join(args.ckpt_dir,args.run_name)
-    sample_path = os.path.join(args.sample_dir,args.run_name)
-    
-    if not os.path.exists(data_dir):
-        os.makedirs(args.data_dir) 
-    if not os.path.exists(ckpt_path):
-        os.makedirs(ckpt_path)
-    if not os.path.exists(log_path):
-        os.makedirs(log_path)
-    if not os.path.exists(args.test_dir):
-        os.makedirs(args.test_dir)
-    if not os.path.exists(sample_path):
-        os.makedirs(sample_path)
-    
-    if args.use_gpu :
-        os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_idx
-    
-    if args.seed is not None :
-        torch.manual_seed(args.seed)
-        random.seed(args.seed)
-        np.random.seed(args.seed)
-        print('Using seed' + str(seed))
-    
-    if not torch.cuda.is_available():
-        if args.gpu:
-            print('Cuda is not available, please disable gpu')
-            exit()
     
     if len(args.gpu_idx) > 1 :
         multi_gpu = True
+        gpu_list = [ int(i) for i in args.gpu_idx.split(',')]
     else :
         multi_gpu = False
     
@@ -132,25 +113,35 @@ def main(_):
     
     if args.dataset == 'cifar10':
         dataset = datasets.CIFAR10(args.data_dir,download = True , 
-                                    transform = transforms.Compose(
+                                    transform = transforms.Compose([
                                     transforms.Resize(args.imsize),
                                     transforms.ToTensor(),
                                     transforms.Normalize([0.5,0.5,0.5] , [0.5,0.5,0.5])
+                                    ]
                                     )
                                    )
+    elif args.dataset == 'mnist':
+        dataset = datasets.MNIST(args.data_dir , train=True, download=True,
+                       transform=transforms.Compose([
+                            transforms.Scale( args.imsize ),
+                            transforms.ToTensor(),
+                            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+                           ]))
+        args.in_dim = 1
+        args.out_dim = 1
     else :
         dataset = datasets.ImageFolder(args.data_dir , 
-                                    transform = transforms.Compose(
+                                    transform = transforms.Compose([
                                     transforms.Resize(args.imsize),
                                     transforms.ToTensor(),
-                                    transforms.Normalize([0.5,0.5,0.5] , [0.5,0.5,0.5])
+                                    transforms.Normalize((0.5,0.5,0.5) , (0.5,0.5,0.5))]
                                     )
                                    )
     
     dataloader = torch.utils.data.DataLoader( dataset , batch_size = args.batch , \
                                              shuffle = True , num_workers = args.worker)
     
-    device = torch.device()
+    #device = torch.device()
     
     generator = model.Generator(args)
     discriminator = model.Discriminator(args)
@@ -168,8 +159,7 @@ def main(_):
     
     
     
-    opt_d = optim.Adam(discriminator.parameters() , lr = args.lr , betas=(args.beta1 , 0.999) )
-    opt_g = optim.Adam(generator.parameters() , lr = args.lr , betas=(args.beta1, 0.999) )
+   
     
     if args.l_smooth:
         # training strategy stated in improved GAN
@@ -181,20 +171,33 @@ def main(_):
         
     step = 0
     
-    if os.path.isfile(os.path.join(ckpt_path,args.run_name+'.ckpt')):
-        ckpt = torch.load(os.path.join(ckpt_path,args.run_name+'.ckpt'))
-        generator.load_state_dict(ckpt['generator'])
-        discriminator.load_state_dict(ckpt['discriminator'])
-        opt_d.load_state_dict(ckpt['opt_d'])
-        opt_g.load_state_dict(ckpt['opt_g'])
+    
     
     if args.gpu:
 
         # acutally do nothing?  because bce and cce don't have paramters
         gan_criterion = gan_criterion.cuda()
         aux_criterion = aux_criterion.cuda()
+        
         generator = generator.cuda()
         discriminator = discriminator.cuda()
+        
+        if multi_gpu:
+            print('multi gpu')
+            generator = nn.DataParallel(generator , device_ids = gpu_list)
+            discriminator = nn.DataParallel(discriminator , device_ids = gpu_list)
+    
+    opt_d = optim.Adam(discriminator.parameters() , lr = args.lr , betas=(args.beta1 , 0.999) )
+    opt_g = optim.Adam(generator.parameters() , lr = args.lr , betas=(args.beta1, 0.999) )
+    
+    if os.path.isfile(os.path.join(ckpt_path,args.run_name+'.ckpt')):
+        print('found ckpt file')
+        ckpt = torch.load(os.path.join(ckpt_path,args.run_name+'.ckpt'))
+        generator.load_state_dict(ckpt['generator'])
+        discriminator.load_state_dict(ckpt['discriminator'])
+        opt_d.load_state_dict(ckpt['opt_d'])
+        opt_g.load_state_dict(ckpt['opt_g'])
+        step = ckpt['step']
     
     
     for i in range(args.epoch):
@@ -203,84 +206,95 @@ def main(_):
             
             images , labels = data[0] , data[1]
             
+            batch = images.shape[0]
             
-            input_noise = torch.from_numpy( np.random.normal(0,1,[args.batch , args.dim_embed]) )
-            input_label = torch.from_numpy( np.random.randint(0,args.num_class, [args.batch,1 ]) )
             
-            real_target = torch.full((args.batch,1) , real_label)
-            fake_target = torch.full((args.batch,1) , fake_label)
-            aux_target =  torch.tensor(labels)
+            input_noise = torch.from_numpy( np.random.normal(0,1,[batch , args.dim_embed]).astype(np.float32) )
+            input_label = torch.from_numpy( np.random.randint(0,args.num_class, [batch ]) )
+            
+            real_target = torch.full((batch,1) , real_label)
+            fake_target = torch.full((batch,1) , fake_label)
+            aux_target =  torch.autograd.Variable(labels)
              
             if args.gpu:
                 input_noise = input_noise.cuda()
                 input_label = input_label.cuda()
-                image = images.cuda()
-                label = labels.cuda()
+                images = images.cuda()
+                labels = labels.cuda()
                 real_target = real_target.cuda()
                 fake_target = fake_target.cuda()
                 aux_target = aux_target.cuda()
+                
+            # train generator
+            # 好像不call也沒關係
+            opt_g.zero_grad()
+            
+            fake = generator(input_noise , input_label)
+            gan_out_g , aux_out_g = discriminator(fake)
+            
+            if args.wgan:
+                gan_loss_g = -torch.mean(gan_out_g)
+            else:
+                gan_loss_g = gan_criterion(gan_out_g , real_target )
+                
+            aux_loss_g = aux_criterion(aux_out_g, input_label)
+            
+            g_loss =  (gan_loss_g +  args.aux_weight * aux_loss_g) * 0.5
+            g_loss.backward()
+            
+            opt_g.step()
             
             # train discriminator with real samples
             opt_d.zero_grad()
             
-            gan_out , aux_out_r = discriminator(images)
+            gan_out_r , aux_out_r = discriminator(images)
             
             if args.wgan:
-                gan_loss = -torch.mean(gan_out)
+                gan_loss_r = -torch.mean(gan_out_r)
             else:
-                gan_loss = gan_criterion(gan_out , real_label )
-            aux_loss = aux_criterion(aux_out_r , aux_target)
-            d_real_loss = gan_loss + aux_loss
+                gan_loss_r = gan_criterion(gan_out_r , real_target )
+            
+            
+            aux_loss_r = aux_criterion(aux_out_r , aux_target)
+            d_real_loss = (gan_loss_r + args.aux_weight *  aux_loss_r) / 2.0
             
             
             # train discriminator with fake samples
-            fake = generator(input_noise , input_label).detach()
-            gan_out , aux_out_f = discriminator(fake)
-            if args.wgan:
-                gan_loss = torch.mean(gan_out)
-            else:
-                gan_loss = gan_criterion(gan_out , fake_label)
-                
-            aux_loss = aux_criterion(aux_out_f, input_label)
-            d_fake_loss = gan_loss + args.aux_weight * aux_loss
+            #fake = generator(input_noise , input_label).detach()
+            gan_out_f , aux_out_f = discriminator(fake.detach())
             
-            if args.wgan and args.gp
-                gp = model.gradient_penalty(discriminator, images, fake)
-                d_loss = d_real_loss + d_fake_loss + args.gp_weight*gp
+            if args.wgan:
+                gan_loss_f = torch.mean(gan_out_f)
             else:
-                d_loss = d_real_loss + d_fake_loss
+                gan_loss_f = gan_criterion(gan_out_f , fake_target)
+                
+
+            aux_loss_f = aux_criterion(aux_out_f, input_label)
+            d_fake_loss =( gan_loss_f +  args.aux_weight * aux_loss_f ) / 2.0
+
+            
+            
+            if args.wgan and args.gp:
+                gp = model.gradient_penalty(discriminator, images, fake , args.num_class , args.gpu)
+                d_loss = 0.5 * (d_real_loss + d_fake_loss) + args.gp_weight*gp
+
+            else:
+                d_loss = (d_real_loss + d_fake_loss) / 2.0
                 
             d_loss.backward()
             
             opt_d.step()
             
             
-            # train generator
-            opt_d.zero_grad() # 好像不call也沒關係
-            opt_g.zero_grad()
-            
-            fake = generator(input_noise , input_label)
-            gan_out , aux_out_f = discriminator(fake)
-            if args.wgan:
-                gan_loss = -torch.mean(gan_out)
-            else:
-                gan_loss = gan_criterion(gan_out , real_label )
-                
-            aux_loss = aux_criterion(aux_out_f, input_label)
-            
-            g_loss = gan_loss + aux_loss
-            g_loss.backward()
-            
-            opt_g.step()
             
             step = step + 1
+            if step % 100 == 0 : 
+            	writer.add_scalar('losses/g_loss' , g_loss , step)
+            	writer.add_scalar('losses/d_loss' , d_loss , step)
+            	grid = vutils.make_grid(fake.detach() ,  normalize=True )
+            	writer.add_image('generated', grid , step)
             
-            writer.add_scalar('losses/g_loss' , g_loss , step)
-            writer.add_scalar('losses/d_loss' , d_loss , step)
-            grid = vutils.make_grid(fake.detach() ,  normalize=True )
-            writer.add_image('generated', grid , step)
-            
-            if args.wagn and not args.gp :
+            if args.wgan and not args.gp :
                 for p in discriminator.parameters():
                     p.data.clamp_(-args.clip , args.clip)
             
@@ -302,14 +316,86 @@ def main(_):
 
             
             print ("[Epoch %d/%d] [Batch %d/%d] [D loss: %f, acc: %d%%] [G loss: %f]" % \
-                   (epoch, args.epoch , j, len(dataloader),
+                   (i, args.epoch , j, len(dataloader),
                     d_loss.item(), 100.0 * d_acc,
                     g_loss.item()))
         
 
+
+def test():
     
+    nrow = 4  # output a 4 * 4 grid
+    
+    generator = model.Generator(args)
+    
+        
+    if args.gpu:
+        # no need to use multi gpu in testing phase
+        generator = generator.cuda()
+        
+    assert os.path.isfile(os.path.join(ckpt_path,args.run_name+'.ckpt'))
+    
+    print('found ckpt file')
+    ckpt = torch.load(os.path.join(ckpt_path,args.run_name+'.ckpt'))
+    generator.load_state_dict(ckpt['generator'])
+        
+    input_noise = torch.from_numpy( np.random.normal(0,1,[ nrow**2 , args.dim_embed]).astype(np.float32) )
+    
+    if args.sample_idx == None:
+        input_label = torch.from_numpy( np.random.randint(0,args.num_class, [ nrow**2 ]) )
+    else :
+        input_label = torch.from_numpy( np.array([ np.int(args.sample_idx) for i in range(nrow**2)]))
+    
+    if args.gpu:
+        input_noise = input_noise.cuda()
+        input_label = input_label.cuda()
+        
+    generator.zero_grad()
+    #fake = generator(input_noise , input_label)
+    
+    test_generator(generator , input_noise , input_label , nrow )
+            
+          
 if __name__ == '__main__' :
-    main()
+    log_path = os.path.join(args.log_dir,args.run_name)
+    ckpt_path = os.path.join(args.ckpt_dir,args.run_name)
+    sample_path = os.path.join(args.sample_dir,args.run_name)
+    test_path = os.path.join(args.test_dir, args.run_name)
+    
+    if not os.path.exists(args.data_dir):
+        os.makedirs(args.data_dir) 
+    if not os.path.exists(ckpt_path):
+        os.makedirs(ckpt_path)
+    if not os.path.exists(log_path):
+        os.makedirs(log_path)
+    if not os.path.exists(args.test_dir):
+        os.makedirs(args.test_dir)
+    if not os.path.exists(sample_path):
+        os.makedirs(sample_path)
+    if not os.path.exists(test_path):
+        os.makedirs(test_path)
+    
+    if args.gpu :
+        os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_idx
+    
+    if args.seed is not None :
+        torch.manual_seed(args.seed)
+        random.seed(args.seed)
+        np.random.seed(args.seed)
+        print('Using seed' + str(args.seed))
+    
+    if not torch.cuda.is_available():
+        if args.gpu:
+            print('Cuda is not available, please disable gpu')
+            exit()
+    
+
+        
+        
+    if args.phase == 'train':
+        train()
+    elif args.phase == 'test' :
+        test()
 
 
 

@@ -22,13 +22,13 @@ from tensorboardX import SummaryWriter
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('--batch' , dest = 'batch' , type = int , default = 64)
+parser.add_argument('--batch' , dest = 'batch' , type = int , default = 32)
 parser.add_argument('--phase' , dest = 'phase' , default = 'train')
 
 parser.add_argument('--epoch' , dest = 'epoch' , type = int , default = 200)
 parser.add_argument('--imsize', dest = 'imsize' , type = int , default = 32 , help = 'image size')
 parser.add_argument('--gfdim' , dest = 'gfdim' , type = int , default = 16 )
-parser.add_argument('--deconv' , dest = 'deconv', type = bool , default = False )
+parser.add_argument('--deconv' , dest = 'deconv', type = bool , default = True )
 parser.add_argument('--dfdim' , dest = 'dfdim' , type = int , default = 16 )
 
 parser.add_argument('--in_dim', dest = 'in_dim' , type = int , default = 3  ,help = 'input image channel')
@@ -41,8 +41,8 @@ parser.add_argument('--dim_embed' , dest = 'dim_embed' , type = int , default = 
 
 parser.add_argument('--sn' , dest = 'sn' , type = bool , default = True , help = ' Use spectral normalization or not')
 
-parser.add_argument('--g_kernel' , dest = 'g_kernel' , type = int , default = 3 , help = 'kernel size of generator conv2d')
-parser.add_argument('--d_kernel' , dest = 'd_kernel' , type = int , default = 3 , help = 'kernel size of discriminator conv2d')
+parser.add_argument('--g_kernel' , dest = 'g_kernel' , type = int , default = 4 , help = 'kernel size of generator conv2d')
+parser.add_argument('--d_kernel' , dest = 'd_kernel' , type = int , default = 4 , help = 'kernel size of discriminator conv2d')
 
 parser.add_argument('--gpu', dest = 'gpu' , type = bool , default = True)
 parser.add_argument('--gpu_idx', dest = 'gpu_idx' , default = '0' )
@@ -70,7 +70,7 @@ parser.add_argument('--gp' , dest = 'gp' , type = bool , default = False , help 
 parser.add_argument('--gp_weight' , dest = 'gp_weight' , type = float , default = 10.0)
 
 parser.add_argument('--aux_weight' , dest = 'aux_weight', type = float , default = 1.0 , help = 'loss weight of auxiliary buffer')
-parser.add_argument('--l_smooth' , dest = 'l_smooth' , type = bool , default = True , help = 'Label smoothing of GAN or not')
+parser.add_argument('--l_smooth' , dest = 'l_smooth' , type = bool , default = False , help = 'Label smoothing of GAN or not')
 
 parser.add_argument('--run_name' , dest = 'run_name' , default = 'test' )
 
@@ -114,6 +114,15 @@ def train():
                                     ]
                                     )
                                    )
+    elif args.dataset == 'mnist':
+        dataset = datasets.MNIST(args.data_dir , train=True, download=True,
+                       transform=transforms.Compose([
+                            transforms.Scale( args.imsize ),
+                            transforms.ToTensor(),
+                            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+                           ]))
+        args.in_dim = 1
+        args.out_dim = 1
     else :
         dataset = datasets.ImageFolder(args.data_dir , 
                                     transform = transforms.Compose([
@@ -208,35 +217,57 @@ def train():
                 real_target = real_target.cuda()
                 fake_target = fake_target.cuda()
                 aux_target = aux_target.cuda()
+                
+            # train generator
+            # 好像不call也沒關係
+            opt_g.zero_grad()
+            
+            fake = generator(input_noise , input_label)
+            gan_out_g , aux_out_g = discriminator(fake)
+            
+            if args.wgan:
+                gan_loss_g = -torch.mean(gan_out_g)
+            else:
+                gan_loss_g = gan_criterion(gan_out_g , real_target )
+                
+            aux_loss_g = aux_criterion(aux_out_g, input_label)
+            
+            g_loss =  (gan_loss_g +  args.aux_weight * aux_loss_g) * 0.5
+            g_loss.backward()
+            
+            opt_g.step()
             
             # train discriminator with real samples
             opt_d.zero_grad()
             
-            gan_out , aux_out_r = discriminator(images)
+            gan_out_r , aux_out_r = discriminator(images)
             
             if args.wgan:
-                gan_loss = -torch.mean(gan_out)
+                gan_loss_r = -torch.mean(gan_out_r)
             else:
-                gan_loss = gan_criterion(gan_out , real_target )
-                
-            aux_loss = aux_criterion(aux_out_r , aux_target)
-            d_real_loss = gan_loss + args.aux_weight *  aux_loss
+                gan_loss_r = gan_criterion(gan_out_r , real_target )
+            
+            
+            aux_loss_r = aux_criterion(aux_out_r , aux_target)
+            d_real_loss = (gan_loss_r + args.aux_weight *  aux_loss_r) / 2.0
             
             
             # train discriminator with fake samples
-            fake = generator(input_noise , input_label).detach()
-            gan_out , aux_out_f = discriminator(fake)
+            #fake = generator(input_noise , input_label).detach()
+            gan_out_f , aux_out_f = discriminator(fake.detach())
+            
             if args.wgan:
-                gan_loss = torch.mean(gan_out)
+                gan_loss_f = torch.mean(gan_out_f)
             else:
-                gan_loss = gan_criterion(gan_out , fake_target)
+                gan_loss_f = gan_criterion(gan_out_f , fake_target)
                 
-            aux_loss = aux_criterion(aux_out_f, input_label)
-            d_fake_loss = gan_loss +  args.aux_weight * aux_loss
+            aux_loss_f = aux_criterion(aux_out_f, input_label)
+            d_fake_loss =( gan_loss_f +  args.aux_weight * aux_loss_f ) / 2.0
+            
             
             if args.wgan and args.gp:
                 gp = model.gradient_penalty(discriminator, images, fake)
-                d_loss = d_real_loss + d_fake_loss + args.gp_weight*gp
+                d_loss = 0.5 * (d_real_loss + d_fake_loss) + args.gp_weight*gp
             else:
                 d_loss = (d_real_loss + d_fake_loss) / 2.0
                 
@@ -245,23 +276,6 @@ def train():
             opt_d.step()
             
             
-            # train generator
-            opt_d.zero_grad() # 好像不call也沒關係
-            opt_g.zero_grad()
-            
-            fake = generator(input_noise , input_label)
-            gan_out , aux_out_f = discriminator(fake)
-            if args.wgan:
-                gan_loss = -torch.mean(gan_out)
-            else:
-                gan_loss = gan_criterion(gan_out , real_target )
-                
-            aux_loss = aux_criterion(aux_out_f, input_label)
-            
-            g_loss =  (gan_loss +  args.aux_weight * aux_loss) * 0.5
-            g_loss.backward()
-            
-            opt_g.step()
             
             step = step + 1
             

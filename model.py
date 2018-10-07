@@ -35,24 +35,26 @@ class Generator( nn.Module ):
         self.embedding = nn.Embedding( args.num_class , args.dim_embed )
         self.fc1 = nn.Linear( args.dim_embed , (self.initsize**2) * args.gfdim * 8 )
         
+        self.batchnorm_fc = nn.BatchNorm2d(args.gfdim * 8)
+        
         if args.deconv:
             
             pad = math.ceil( (args.g_kernel - 2) / 2)
             outpad = -((args.g_kernel - 2) - (2*pad))
             
             self.conv1 = nn.Sequential(
-                    nn.ConvTranspose2d(args.gfdim * 8 , args.gfdim * 4 , args.g_kernel ,stride = 2 , padding = pad , out_padding = outpad ),
+                    nn.ConvTranspose2d(args.gfdim * 8 , args.gfdim * 4 , args.g_kernel ,stride = 2 , padding = pad , output_padding = outpad ),
                     nn.BatchNorm2d(args.gfdim * 4),
                     nn.LeakyReLU(inplace = True)
                     )
             self.conv2 = nn.Sequential(
-                    nn.ConvTranspose2d(args.gfdim * 4 , args.gfdim * 2 , args.g_kernel ,stride = 2 , padding = pad , out_padding = outpad ),
-                    nn.BatchNorm2d(args.gfdim * 4),
+                    nn.ConvTranspose2d(args.gfdim * 4 , args.gfdim * 2 , args.g_kernel ,stride = 2 , padding = pad , output_padding = outpad ),
+                    nn.BatchNorm2d(args.gfdim * 2),
                     nn.LeakyReLU(inplace = True)
                     )
             self.conv3 = nn.Sequential(
-                    nn.ConvTranspose2d(args.gfdim * 2 , args.gfdim  , args.g_kernel ,stride = 2 , padding = pad , out_padding = outpad ),
-                    nn.BatchNorm2d(args.gfdim * 4),
+                    nn.ConvTranspose2d(args.gfdim * 2 , args.gfdim  , args.g_kernel ,stride = 2 , padding = pad , output_padding = outpad ),
+                    nn.BatchNorm2d(args.gfdim ),
                     nn.LeakyReLU(inplace = True)
                     )
             self.conv4 = nn.Sequential(
@@ -65,21 +67,21 @@ class Generator( nn.Module ):
             pad = ((args.g_kernel-1))/2
             self.conv1 = nn.Sequential(
                     nn.Conv2d(args.gfdim * 8 , args.gfdim*4 , 3 , stride = 1 , padding = 1 ),
-                    nn.Upsample(scale_factor = 2 ),
                     nn.BatchNorm2d(args.gfdim * 4),
-                    nn.LeakyReLU(inplace = True )
+                    nn.LeakyReLU(inplace = True ),
+                    nn.Upsample(scale_factor = 2 ),
                     )
             self.conv2 = nn.Sequential(
                     nn.Conv2d(args.gfdim * 4 , args.gfdim*2 , 3  , stride = 1 , padding = 1 ),
-                    nn.Upsample(scale_factor = 2 ),
                     nn.BatchNorm2d(args.gfdim * 2),
-                    nn.LeakyReLU(inplace = True )
+                    nn.LeakyReLU(inplace = True ),
+                     nn.Upsample(scale_factor = 2 ),
                     )
             self.conv3 = nn.Sequential(
                     nn.Conv2d(args.gfdim * 2 , args.gfdim , 3 , stride = 1 , padding = 1 ),
-                    nn.Upsample(scale_factor = 2 ),
                     nn.BatchNorm2d(args.gfdim ) ,
-                    nn.LeakyReLU(inplace = True )
+                    nn.LeakyReLU(inplace = True ),
+                    nn.Upsample(scale_factor = 2 ),
                     )
             self.conv4 = nn.Sequential(
                     nn.ZeroPad2d((1,0,1,0)),
@@ -98,6 +100,7 @@ class Generator( nn.Module ):
         x = self.fc1(x)
         #print(x.shape)
         x = x.view( x.shape[0] , self.gfdim * 8  , self.initsize , self.initsize)
+        x = self.batchnorm_fc(x)
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.conv3(x) 
@@ -159,6 +162,7 @@ class Discriminator( nn.Module ):
         self.fc_gan = nn.Linear( args.dfdim* 8 * (self.dsize**2) , 1)
         self.fc_aux1 = nn.Linear( args.dfdim* 8 * (self.dsize**2) , 128)
         self.fc_aux2 = nn.Linear( 128 , args.num_class)
+        self.fc_aux = nn.Linear(args.dfdim* 8 * (self.dsize**2) , args.num_class)
         
         self.out_dim = args.out_dim
         
@@ -175,6 +179,8 @@ class Discriminator( nn.Module ):
         gan_out= self.sigmoid(self.fc_gan(x))
         
         
-        aux_temp = self.fc_aux1(x)
-        aux_out = self.soft_max(self.fc_aux2(aux_temp))
+        #aux_temp = self.fc_aux1(x)
+        #aux_out = self.soft_max(self.fc_aux2(aux_temp))
+        
+        aux_out = self.soft_max(self.fc_aux(x))
         return gan_out , aux_out

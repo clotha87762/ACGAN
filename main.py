@@ -242,7 +242,7 @@ def main(_):
                 gan_loss = gan_criterion(gan_out , fake_label)
                 
             aux_loss = aux_criterion(aux_out_f, input_label)
-            d_fake_loss = gan_loss + aux_loss
+            d_fake_loss = gan_loss + args.aux_weight * aux_loss
             
             if args.wgan and args.gp
                 gp = model.gradient_penalty(discriminator, images, fake)

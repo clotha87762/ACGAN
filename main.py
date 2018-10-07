@@ -74,6 +74,8 @@ parser.add_argument('--l_smooth' , dest = 'l_smooth' , type = bool , default = F
 
 parser.add_argument('--run_name' , dest = 'run_name' , default = 'test' )
 
+parser.add_argument('--sample_idx' , dest = 'sample_idx' ,type = int, default = None , help = 'sample index for evaluation in test phase')
+
 args = parser.parse_args()
 
 
@@ -91,7 +93,11 @@ def sample_generator( generator , noise , label , step):
     fake = generator(noise , label).detach().cpu()
     vutils.save_image( fake , sample_path + '/%d.png' % step , nrow=8, normalize=True)
 
+def test_generator( generator , noise , label , nrow ):
     
+    # file name is sample index
+    fake = generator(noise , label).detach().cpu()
+    vutils.save_image( fake , test_path + '/%d.png' % args.sample_idx , nrow=nrow, normalize=True)
     
 
 def train():
@@ -262,8 +268,10 @@ def train():
             else:
                 gan_loss_f = gan_criterion(gan_out_f , fake_target)
                 
+
             aux_loss_f = aux_criterion(aux_out_f, input_label)
             d_fake_loss =( gan_loss_f +  args.aux_weight * aux_loss_f ) / 2.0
+
             
             
             if args.wgan and args.gp:
@@ -311,13 +319,53 @@ def train():
                    (i, args.epoch , j, len(dataloader),
                     d_loss.item(), 100.0 * d_acc,
                     g_loss.item()))
-        
+       
 
+
+
+def test():
     
+    nrow = 4  # output a 4 * 4 grid
+    
+    if args.dataset == 'mnist' :
+        args.in_dim = 1
+        args.out_dim = 1
+    
+    generator = model.Generator(args)
+    
+        
+    if args.gpu:
+        # no need to use multi gpu in testing phase
+        generator = generator.cuda()
+        
+    assert os.path.isfile(os.path.join(ckpt_path,args.run_name+'.ckpt'))
+    
+    print('found ckpt file' + os.path.join(ckpt_path,args.run_name+'.ckpt'))
+    ckpt = torch.load(os.path.join(ckpt_path,args.run_name+'.ckpt'))
+    generator.load_state_dict(ckpt['generator'])
+        
+    input_noise = torch.from_numpy( np.random.normal(0,1,[ nrow**2 , args.dim_embed]).astype(np.float32) )
+    
+    if args.sample_idx == None:
+        input_label = torch.from_numpy( np.random.randint(0,args.num_class, [ nrow**2 ]) )
+    else :
+        input_label = torch.from_numpy( np.array([ np.int(args.sample_idx) for i in range(nrow**2)]))
+    
+    if args.gpu:
+        input_noise = input_noise.cuda()
+        input_label = input_label.cuda()
+        
+    generator.zero_grad()
+    #fake = generator(input_noise , input_label)
+    
+    test_generator(generator , input_noise , input_label , nrow )
+            
+          
 if __name__ == '__main__' :
     log_path = os.path.join(args.log_dir,args.run_name)
     ckpt_path = os.path.join(args.ckpt_dir,args.run_name)
     sample_path = os.path.join(args.sample_dir,args.run_name)
+    test_path = os.path.join(args.test_dir, args.run_name)
     
     if not os.path.exists(args.data_dir):
         os.makedirs(args.data_dir) 
@@ -329,6 +377,8 @@ if __name__ == '__main__' :
         os.makedirs(args.test_dir)
     if not os.path.exists(sample_path):
         os.makedirs(sample_path)
+    if not os.path.exists(test_path):
+        os.makedirs(test_path)
     
     if args.gpu :
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu_idx
@@ -349,6 +399,9 @@ if __name__ == '__main__' :
         
     if args.phase == 'train':
         train()
+    elif args.phase == 'test' :
+        test()
+
 
 
 

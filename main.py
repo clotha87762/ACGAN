@@ -267,7 +267,7 @@ def train():
             
             
             if args.wgan and args.gp:
-                gp = model.gradient_penalty(discriminator, images, fake)
+                gp = model.gradient_penalty(discriminator, images, fake , args.num_class , args.gpu)
                 d_loss = 0.5 * (d_real_loss + d_fake_loss) + args.gp_weight*gp
 
             else:

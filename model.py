@@ -5,20 +5,42 @@ import torch.nn.functional as F
 import torch.nn.parallel
 import torch.autograd as autograd
 import math
+from torch.autograd import Variable
 
 import numpy as np 
 
 
-def gradient_penalty( discriminator , real_sample , fake_sample ):
+
+def gradient_penalty( discriminator , real_sample , fake_sample , num_class ,cuda = False ):
     
     batch = real_sample.shape[0]
 
-    alpha = torch.from_numpy( np.random.random(batch,1) )
-    interpolate = (alpha * real_sample)  +  ((1.0-alpha) * fake_sample)
-    output = discriminator(interpolate)
+    alpha = torch.from_numpy( np.random.random([batch,1,1,1]).astype(np.float32))
+    if cuda:
+        alpha = alpha.cuda()
+
+    interpolate = (alpha * real_sample.data)  +  ((1.0-alpha) * fake_sample.data)
+    interpolate.requires_grad = True
+    output  = discriminator(interpolate)
     
-    grad_output = torch.empty([batch,1]).fill_(1.0)
-    grads = autograd.grad( output, interpolate, grad_output)
+    grad_output = ( (torch.empty([batch,1]).fill_(1.0)).requires_grad_(False).cuda() if cuda else\
+                    torch.empty([batch,1]).fill_(1.0).requires_grad_(False),\
+                    torch.empty([batch, num_class]).fill_(1.0).requires_grad_(False).cuda() if cuda else\
+                    torch.empty([batch, num_class]).fill_(1.0).requires_grad_(False)
+                    )
+    
+    #print(grad_output.requires_grad)
+    
+    #if cuda:
+    #    grad_output = grad_output.cuda()
+    #grad_output.requires_grad = False
+
+    #print(output.size())
+    #print(interpoate.size())
+    #print(grad_output.size())
+
+    grads  = autograd.grad( outputs = output, inputs = interpolate, grad_outputs = grad_output,
+    create_graph=True,retain_graph=True, only_inputs=True)[0]
     
     grads = grads.view(batch,-1)
     penalty = (grads.norm(p=2 , dim = 1) - 1.0) ** 2
@@ -165,7 +187,7 @@ class Discriminator( nn.Module ):
         self.fc_aux = nn.Linear(args.dfdim* 8 * (self.dsize**2) , args.num_class)
         
         self.out_dim = args.out_dim
-        
+        self.num_class = args.num_class
         self.soft_max = nn.Softmax()
         self.sigmoid = nn.Sigmoid()
     
@@ -179,8 +201,14 @@ class Discriminator( nn.Module ):
         gan_out= self.sigmoid(self.fc_gan(x))
         
         
+<<<<<<< HEAD
         #aux_temp = self.fc_aux1(x)
         #aux_out = self.soft_max(self.fc_aux2(aux_temp))
         
         aux_out = self.soft_max(self.fc_aux(x))
         return gan_out , aux_out
+=======
+        aux_temp = self.fc_aux1(x)
+        aux_out = self.soft_max(self.fc_aux2(aux_temp))
+        return gan_out , aux_out
+>>>>>>> 3974c5d0fbcafa9ca8b3ea76e5ce2ea5e1d68c66

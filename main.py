@@ -177,6 +177,7 @@ def train():
         discriminator = discriminator.cuda()
         
         if multi_gpu:
+            print('multi gpu')
             generator = nn.DataParallel(generator , device_ids = gpu_list)
             discriminator = nn.DataParallel(discriminator , device_ids = gpu_list)
     
@@ -266,8 +267,13 @@ def train():
             
             
             if args.wgan and args.gp:
+<<<<<<< HEAD
                 gp = model.gradient_penalty(discriminator, images, fake)
                 d_loss = 0.5 * (d_real_loss + d_fake_loss) + args.gp_weight*gp
+=======
+                gp = model.gradient_penalty(discriminator, images.data, fake.data , args.num_class, args.gpu)
+                d_loss = d_real_loss + d_fake_loss + args.gp_weight*gp
+>>>>>>> 3974c5d0fbcafa9ca8b3ea76e5ce2ea5e1d68c66
             else:
                 d_loss = (d_real_loss + d_fake_loss) / 2.0
                 
@@ -278,11 +284,11 @@ def train():
             
             
             step = step + 1
-            
-            writer.add_scalar('losses/g_loss' , g_loss , step)
-            writer.add_scalar('losses/d_loss' , d_loss , step)
-            grid = vutils.make_grid(fake.detach() ,  normalize=True )
-            writer.add_image('generated', grid , step)
+            if step % 100 == 0 : 
+            	writer.add_scalar('losses/g_loss' , g_loss , step)
+            	writer.add_scalar('losses/d_loss' , d_loss , step)
+            	grid = vutils.make_grid(fake.detach() ,  normalize=True )
+            	writer.add_image('generated', grid , step)
             
             if args.wgan and not args.gp :
                 for p in discriminator.parameters():

@@ -200,15 +200,9 @@ class Discriminator( nn.Module ):
         
         gan_out= self.sigmoid(self.fc_gan(x))
         
-        
-<<<<<<< HEAD
         #aux_temp = self.fc_aux1(x)
         #aux_out = self.soft_max(self.fc_aux2(aux_temp))
         
         aux_out = self.soft_max(self.fc_aux(x))
         return gan_out , aux_out
-=======
-        aux_temp = self.fc_aux1(x)
-        aux_out = self.soft_max(self.fc_aux2(aux_temp))
-        return gan_out , aux_out
->>>>>>> 3974c5d0fbcafa9ca8b3ea76e5ce2ea5e1d68c66
+

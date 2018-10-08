@@ -37,7 +37,7 @@ parser.add_argument('--lr' , dest = 'lr' , type = float , default = 0.0002)
 
 parser.add_argument('--num_class' , dest = 'num_class' , type = int , default = 10 )
 parser.add_argument('--beta1' , dest = 'beta1' , type = float , default = 0.5 , help = 'beta1 of Adam optimizer')
-parser.add_argument('--dim_embed' , dest = 'dim_embed' , type = int , default = 100 , help = 'the dim of the embedded vector' )
+parser.add_argument('--dim_embed' , dest = 'dim_embed' , type = int , default = 110 , help = 'the dim of the embedded vector' )
 
 parser.add_argument('--sn' , dest = 'sn' , type = bool , default = True , help = ' Use spectral normalization or not')
 
@@ -191,7 +191,7 @@ def train():
     opt_g = optim.Adam(generator.parameters() , lr = args.lr , betas=(args.beta1, 0.999) )
     
     if os.path.isfile(os.path.join(ckpt_path,args.run_name+'.ckpt')):
-        print('found ckpt file')
+        print('found ckpt file' + os.path.isfile(os.path.join(ckpt_path,args.run_name+'.ckpt')))
         ckpt = torch.load(os.path.join(ckpt_path,args.run_name+'.ckpt'))
         generator.load_state_dict(ckpt['generator'])
         discriminator.load_state_dict(ckpt['discriminator'])
@@ -211,6 +211,14 @@ def train():
             
             input_noise = torch.from_numpy( np.random.normal(0,1,[batch , args.dim_embed]).astype(np.float32) )
             input_label = torch.from_numpy( np.random.randint(0,args.num_class, [batch ]) )
+            
+            
+            input_noise =  np.random.normal(0,1,[batch , args.dim_embed]).astype(np.float32)
+            class_onehot = np.zeros((batch, args.num_class))
+            class_onehot[np.arange(batch), input_label] = 1
+            input_noise[np.arange(batch), : args.num_class] = class_onehot[np.arange(batch)]
+            input_noise = torch.from_numpy(input_noise)
+            
             
             real_target = torch.full((batch,1) , real_label)
             fake_target = torch.full((batch,1) , fake_label)

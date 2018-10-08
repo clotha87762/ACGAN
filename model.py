@@ -115,10 +115,13 @@ class Generator( nn.Module ):
     def forward(self , noise ,  class_index ):
         #print(noise.shape)
         #print(class_index.shape)
-        latent = self.embedding(class_index)
+        #latent = self.embedding(class_index)
         #print(latent.shape)
-        x = torch.mul( latent , noise)
+        #x = torch.mul( latent , noise)
         #print(x.shape)
+        
+        x = noise
+        
         x = self.fc1(x)
         #print(x.shape)
         x = x.view( x.shape[0] , self.gfdim * 8  , self.initsize , self.initsize)

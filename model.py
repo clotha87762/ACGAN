@@ -51,33 +51,39 @@ class Generator( nn.Module ):
     
     def __init__(self , args ):
         super(Generator, self).__init__()
-        self.initsize = args.imsize // 8
+        self.initsize = args.imsize // 16
         self.gfdim = args.gfdim
         
         self.embedding = nn.Embedding( args.num_class , args.dim_embed )
-        self.fc1 = nn.Linear( args.dim_embed , (self.initsize**2) * args.gfdim * 8 )
+        self.fc1 = nn.Linear( args.dim_embed , (self.initsize**2) * args.gfdim * 16 )
         
-        self.batchnorm_fc = nn.BatchNorm2d(args.gfdim * 8)
+        self.batchnorm_fc = nn.BatchNorm2d(args.gfdim * 16)
         
         if args.deconv:
             
             pad = math.ceil( (args.g_kernel - 2) / 2)
             outpad = -((args.g_kernel - 2) - (2*pad))
+            self.conv0 = nn.Sequential(
+                    nn.ConvTranspose2d(args.gfdim * 16 , args.gfdim * 8 , args.g_kernel ,stride = 2 , padding = pad , output_padding = outpad ),
+                    nn.BatchNorm2d(args.gfdim * 8),
+                    nn.ReLU(inplace = True)
+                    )
+
             
             self.conv1 = nn.Sequential(
                     nn.ConvTranspose2d(args.gfdim * 8 , args.gfdim * 4 , args.g_kernel ,stride = 2 , padding = pad , output_padding = outpad ),
                     nn.BatchNorm2d(args.gfdim * 4),
-                    nn.LeakyReLU(inplace = True)
+                    nn.ReLU(inplace = True)
                     )
             self.conv2 = nn.Sequential(
                     nn.ConvTranspose2d(args.gfdim * 4 , args.gfdim * 2 , args.g_kernel ,stride = 2 , padding = pad , output_padding = outpad ),
                     nn.BatchNorm2d(args.gfdim * 2),
-                    nn.LeakyReLU(inplace = True)
+                    nn.ReLU(inplace = True)
                     )
             self.conv3 = nn.Sequential(
                     nn.ConvTranspose2d(args.gfdim * 2 , args.gfdim  , args.g_kernel ,stride = 2 , padding = pad , output_padding = outpad ),
                     nn.BatchNorm2d(args.gfdim ),
-                    nn.LeakyReLU(inplace = True)
+                    nn.ReLU(inplace = True)
                     )
             self.conv4 = nn.Sequential(
                     nn.ZeroPad2d((1,0,1,0)),
@@ -124,8 +130,9 @@ class Generator( nn.Module ):
         
         x = self.fc1(x)
         #print(x.shape)
-        x = x.view( x.shape[0] , self.gfdim * 8  , self.initsize , self.initsize)
+        x = x.view( x.shape[0] , self.gfdim * 16  , self.initsize , self.initsize)
         x = self.batchnorm_fc(x)
+        x = self.conv0(x)
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.conv3(x) 

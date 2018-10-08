@@ -63,7 +63,7 @@ class Generator( nn.Module ):
             
             pad = math.ceil( (args.g_kernel - 2) / 2)
             outpad = -((args.g_kernel - 2) - (2*pad))
-            self.conv1 = nn.Sequential(
+            self.conv0 = nn.Sequential(
                     nn.ConvTranspose2d(args.gfdim * 16 , args.gfdim * 8 , args.g_kernel ,stride = 2 , padding = pad , output_padding = outpad ),
                     nn.BatchNorm2d(args.gfdim * 8),
                     nn.ReLU(inplace = True)
@@ -129,7 +129,7 @@ class Generator( nn.Module ):
         #print(x.shape)
         x = x.view( x.shape[0] , self.gfdim * 16  , self.initsize , self.initsize)
         x = self.batchnorm_fc(x)
-	x = self.conv0(x)
+        x = self.conv0(x)
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.conv3(x) 

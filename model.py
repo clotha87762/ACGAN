@@ -55,7 +55,7 @@ class Generator( nn.Module ):
         self.gfdim = args.gfdim
         
         self.embedding = nn.Embedding( args.num_class , args.dim_embed )
-        self.fc1 = nn.Linear( args.dim_embed , (self.initsize**2) * args.gfdim * 16 )
+        self.fc1 = nn.Linear( args.dim_embed ,  args.gfdim * 8 )
         
         self.batchnorm_fc = nn.BatchNorm2d(args.gfdim * 16)
         
@@ -63,12 +63,20 @@ class Generator( nn.Module ):
             
             pad = math.ceil( (args.g_kernel - 2) / 2)
             outpad = -((args.g_kernel - 2) - (2*pad))
+            
+            self.conv = nn.Sequential(
+                    nn.ConvTranspose2d( args.gfdim*8 , args.gfdim * 8 , args.g_kernel ,stride = 1 , padding = 0),
+                    nn.BatchNorm2d(args.gfdim * 8),
+                    nn.ReLU(inplace = True)
+                    )
             self.conv0 = nn.Sequential(
-                    nn.ConvTranspose2d(args.gfdim * 16 , args.gfdim * 8 , args.g_kernel ,stride = 2 , padding = pad , output_padding = outpad ),
+                    nn.ConvTranspose2d(args.gfdim * 16 , args.gfdim * 8 , args.g_kernel ,stride = 2 ,  padding = pad , output_padding = outpad ),
                     nn.BatchNorm2d(args.gfdim * 8),
                     nn.ReLU(inplace = True)
                     )
 
+
+    
             
             self.conv1 = nn.Sequential(
                     nn.ConvTranspose2d(args.gfdim * 8 , args.gfdim * 4 , args.g_kernel ,stride = 2 , padding = pad , output_padding = outpad ),
@@ -90,7 +98,10 @@ class Generator( nn.Module ):
                     nn.Conv2d(args.gfdim , args.out_dim , 4 , stride = 1  , padding = 1),
                     nn.Tanh()
                     )
-            
+            self.convDC = nn.Sequential(
+                    nn.ConvTranspose2d(args.gfdim  , args.out_dim  , args.g_kernel ,stride = 2 , padding = pad , output_padding = outpad ),
+                    nn.Tanh()
+                    )
         else:
             pad = ((args.g_kernel-1))/2
             self.conv1 = nn.Sequential(
@@ -130,13 +141,17 @@ class Generator( nn.Module ):
         
         x = self.fc1(x)
         #print(x.shape)
-        x = x.view( x.shape[0] , self.gfdim * 16  , self.initsize , self.initsize)
-        x = self.batchnorm_fc(x)
-        x = self.conv0(x)
+        
+        #x = x.view( x.shape[0] , self.gfdim * 16 , self.initsize , self.initsize)
+        x = x.view( x.shape[0] , self.gfdim * 8 , 1,1)
+        #x = self.batchnorm_fc(x)
+        #x = self.conv0(x)
+        x = self.conv(x)
         x = self.conv1(x)
         x = self.conv2(x)
         x = self.conv3(x) 
-        x = self.conv4(x)
+        #x = self.conv4(x)
+        x = self.convDC(x)
         
         return x
     
@@ -169,7 +184,6 @@ class Discriminator( nn.Module ):
         else:
             self.conv1 = nn.Sequential(
                 nn.Conv2d(args.out_dim, args.dfdim , 3 , 2 ,1 ),
-                nn.BatchNorm2d(args.dfdim ),
                 nn.LeakyReLU(inplace= True)
                 )
             self.conv1 = nn.Sequential(

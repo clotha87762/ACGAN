@@ -191,7 +191,7 @@ def train():
     opt_g = optim.Adam(generator.parameters() , lr = args.lr , betas=(args.beta1, 0.999) )
     
     if os.path.isfile(os.path.join(ckpt_path,args.run_name+'.ckpt')):
-        print('found ckpt file' + os.path.isfile(os.path.join(ckpt_path,args.run_name+'.ckpt')))
+        print('found ckpt file' + os.path.join(ckpt_path,args.run_name+'.ckpt'))
         ckpt = torch.load(os.path.join(ckpt_path,args.run_name+'.ckpt'))
         generator.load_state_dict(ckpt['generator'])
         discriminator.load_state_dict(ckpt['discriminator'])
@@ -250,6 +250,7 @@ def train():
             g_loss =  (gan_loss_g +  args.aux_weight * aux_loss_g) * 0.5
             g_loss.backward()
             
+            #opt_g.step()
             opt_g.step()
             
             # train discriminator with real samples
@@ -352,12 +353,21 @@ def test():
     ckpt = torch.load(os.path.join(ckpt_path,args.run_name+'.ckpt'))
     generator.load_state_dict(ckpt['generator'])
         
-    input_noise = torch.from_numpy( np.random.normal(0,1,[ nrow**2 , args.dim_embed]).astype(np.float32) )
+    #input_noise = torch.from_numpy( np.random.normal(0,1,[ nrow**2 , args.dim_embed]).astype(np.float32) )
+    
+    
     
     if args.sample_idx == None:
         input_label = torch.from_numpy( np.random.randint(0,args.num_class, [ nrow**2 ]) )
     else :
         input_label = torch.from_numpy( np.array([ np.int(args.sample_idx) for i in range(nrow**2)]))
+    
+    input_noise =  np.random.normal(0,1,[nrow**2 , args.dim_embed]).astype(np.float32)
+    class_onehot = np.zeros((nrow**2, args.num_class))
+    class_onehot[np.arange(nrow**2), input_label] = 1
+    input_noise[np.arange(nrow**2), : args.num_class] = class_onehot[np.arange(nrow**2)]
+    input_noise = torch.from_numpy(input_noise)
+    
     
     if args.gpu:
         input_noise = input_noise.cuda()

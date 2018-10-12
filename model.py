@@ -65,12 +65,12 @@ class Generator( nn.Module ):
             outpad = -((args.g_kernel - 2) - (2*pad))
             
             self.conv = nn.Sequential(
-                    nn.ConvTranspose2d( args.gfdim*8 , args.gfdim * 8 , args.g_kernel ,stride = 1 , padding = 0),
+                    nn.ConvTranspose2d( args.gfdim*8 , args.gfdim * 8 , args.g_kernel ,stride = 1 , padding = 0 , bias = False),
                     nn.BatchNorm2d(args.gfdim * 8),
                     nn.ReLU(inplace = True)
                     )
             self.conv0 = nn.Sequential(
-                    nn.ConvTranspose2d(args.gfdim * 16 , args.gfdim * 8 , args.g_kernel ,stride = 2 ,  padding = pad , output_padding = outpad ),
+                    nn.ConvTranspose2d(args.gfdim * 16 , args.gfdim * 8 , args.g_kernel ,stride = 2 ,  padding = pad , output_padding = outpad , bias = False),
                     nn.BatchNorm2d(args.gfdim * 8),
                     nn.ReLU(inplace = True)
                     )
@@ -79,52 +79,52 @@ class Generator( nn.Module ):
     
             
             self.conv1 = nn.Sequential(
-                    nn.ConvTranspose2d(args.gfdim * 8 , args.gfdim * 4 , args.g_kernel ,stride = 2 , padding = pad , output_padding = outpad ),
+                    nn.ConvTranspose2d(args.gfdim * 8 , args.gfdim * 4 , args.g_kernel ,stride = 2 , padding = pad , output_padding = outpad, bias = False ),
                     nn.BatchNorm2d(args.gfdim * 4),
                     nn.ReLU(inplace = True)
                     )
             self.conv2 = nn.Sequential(
-                    nn.ConvTranspose2d(args.gfdim * 4 , args.gfdim * 2 , args.g_kernel ,stride = 2 , padding = pad , output_padding = outpad ),
+                    nn.ConvTranspose2d(args.gfdim * 4 , args.gfdim * 2 , args.g_kernel ,stride = 2 , padding = pad , output_padding = outpad, bias = False ),
                     nn.BatchNorm2d(args.gfdim * 2),
                     nn.ReLU(inplace = True)
                     )
             self.conv3 = nn.Sequential(
-                    nn.ConvTranspose2d(args.gfdim * 2 , args.gfdim  , args.g_kernel ,stride = 2 , padding = pad , output_padding = outpad ),
+                    nn.ConvTranspose2d(args.gfdim * 2 , args.gfdim  , args.g_kernel ,stride = 2 , padding = pad , output_padding = outpad, bias = False ),
                     nn.BatchNorm2d(args.gfdim ),
                     nn.ReLU(inplace = True)
                     )
             self.conv4 = nn.Sequential(
                     nn.ZeroPad2d((1,0,1,0)),
-                    nn.Conv2d(args.gfdim , args.out_dim , 4 , stride = 1  , padding = 1),
+                    nn.Conv2d(args.gfdim , args.out_dim , 4 , stride = 1  , padding = 1 , bias = False),
                     nn.Tanh()
                     )
             self.convDC = nn.Sequential(
-                    nn.ConvTranspose2d(args.gfdim  , args.out_dim  , args.g_kernel ,stride = 2 , padding = pad , output_padding = outpad ),
+                    nn.ConvTranspose2d(args.gfdim  , args.out_dim  , args.g_kernel ,stride = 2 , padding = pad , output_padding = outpad  , bias = False),
                     nn.Tanh()
                     )
         else:
             pad = ((args.g_kernel-1))/2
             self.conv1 = nn.Sequential(
-                    nn.Conv2d(args.gfdim * 8 , args.gfdim*4 , 3 , stride = 1 , padding = 1 ),
+                    nn.Conv2d(args.gfdim * 8 , args.gfdim*4 , 3 , stride = 1 , padding = 1 , bias = False),
                     nn.BatchNorm2d(args.gfdim * 4),
                     nn.LeakyReLU(inplace = True ),
                     nn.Upsample(scale_factor = 2 ),
                     )
             self.conv2 = nn.Sequential(
-                    nn.Conv2d(args.gfdim * 4 , args.gfdim*2 , 3  , stride = 1 , padding = 1 ),
+                    nn.Conv2d(args.gfdim * 4 , args.gfdim*2 , 3  , stride = 1 , padding = 1 , bias = False),
                     nn.BatchNorm2d(args.gfdim * 2),
                     nn.LeakyReLU(inplace = True ),
                      nn.Upsample(scale_factor = 2 ),
                     )
             self.conv3 = nn.Sequential(
-                    nn.Conv2d(args.gfdim * 2 , args.gfdim , 3 , stride = 1 , padding = 1 ),
+                    nn.Conv2d(args.gfdim * 2 , args.gfdim , 3 , stride = 1 , padding = 1, bias = False ),
                     nn.BatchNorm2d(args.gfdim ) ,
                     nn.LeakyReLU(inplace = True ),
                     nn.Upsample(scale_factor = 2 ),
                     )
             self.conv4 = nn.Sequential(
                     nn.ZeroPad2d((1,0,1,0)),
-                    nn.Conv2d(args.gfdim , args.out_dim , 4 , stride = 1  , padding = 1),
+                    nn.Conv2d(args.gfdim , args.out_dim , 4 , stride = 1  , padding = 1, bias = False),
                     nn.Tanh()
                     )
             
@@ -165,40 +165,40 @@ class Discriminator( nn.Module ):
 
         if args.sn:
             self.conv1 = nn.Sequential(
-                nn.utils.spectral_norm( nn.Conv2d(args.out_dim , args.dfdim , 3 , 2 , 1 )),
+                nn.utils.spectral_norm( nn.Conv2d(args.out_dim , args.dfdim , 3 , 2 , 1, bias = False )),
                 nn.LeakyReLU(inplace= True)
                 )
             self.conv2 = nn.Sequential(
-                nn.utils.spectral_norm( nn.Conv2d(args.dfdim , args.dfdim*2 , 3 , 2 , 1 )),
+                nn.utils.spectral_norm( nn.Conv2d(args.dfdim , args.dfdim*2 , 3 , 2 , 1 , bias = False)),
                 nn.LeakyReLU(inplace= True)
                 )
             self.conv3 = nn.Sequential(
-                nn.utils.spectral_norm( nn.Conv2d(args.dfdim*2 , args.dfdim*4 , 3 , 2 , 1 )),
+                nn.utils.spectral_norm( nn.Conv2d(args.dfdim*2 , args.dfdim*4 , 3 , 2 , 1 , bias = False)),
                 nn.LeakyReLU(inplace= True)
                 )
             self.conv4 = nn.Sequential(
                     nn.ZeroPad2d((1,0,1,0)),
-                    nn.utils.spectral_norm(nn.Conv2d(args.dfdim * 4 , args.dfdim * 8  , 4 , stride = 1  , padding = 1)),
+                    nn.utils.spectral_norm(nn.Conv2d(args.dfdim * 4 , args.dfdim * 8  , 4 , stride = 1  , padding = 1, bias = False)),
                     nn.Tanh()
                     )
         else:
             self.conv1 = nn.Sequential(
-                nn.Conv2d(args.out_dim, args.dfdim , 3 , 2 ,1 ),
+                nn.Conv2d(args.out_dim, args.dfdim , 3 , 2 ,1 , bias = False),
                 nn.LeakyReLU(inplace= True)
                 )
             self.conv1 = nn.Sequential(
-                nn.Conv2d(args.dfdim, args.dfdim*2 , 3 , 2 ,1 ),
+                nn.Conv2d(args.dfdim, args.dfdim*2 , 3 , 2 ,1 , bias = False),
                 nn.BatchNorm2d(args.dfdim *2),
                 nn.LeakyReLU(inplace= True)
                 )
             self.conv1 = nn.Sequential(
-                nn.Conv2d(args.dfdim*2, args.dfdim*4 , 3 , 2 ,1 ),
+                nn.Conv2d(args.dfdim*2, args.dfdim*4 , 3 , 2 ,1, bias = False ),
                 nn.BatchNorm2d(args.dfdim *4 ),
                 nn.LeakyReLU(inplace= True)
                 )
             self.conv4 = nn.Sequential(
                     nn.ZeroPad2d((1,0,1,0)),
-                    nn.Conv2d(args.gdfdim * 4 , args.dfdim * 8  , 4 , stride = 1  , padding = 1),
+                    nn.Conv2d(args.gdfdim * 4 , args.dfdim * 8  , 4 , stride = 1  , padding = 1, bias = False),
                     nn.Tanh()
                     )
         
